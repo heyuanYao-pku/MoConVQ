@@ -1,0 +1,56 @@
+---
+env:
+  scene_fname: Data/Misc/world.json
+  fps: 20
+
+bvh_folder: Data\Motion
+# motion_dataset: ./data.h5
+motion_dataset: ./simple_motion_data.h5
+clip_feature_set: None #./lafan_big_fixed.h5
+collect_size: 1024
+
+encoder:
+  hidden_layer_size: 512
+  hidden_layer_num: 3
+  activation: ELU
+  fix_var: 0.3
+
+actor:
+  hidden_layer_size: 1024
+  hidden_layer_num: 4
+  activation: ELU
+  num_experts: 6
+  gate:
+    hidden_layer_size: 64
+
+MoConVQ:
+  rollout_length: 24
+  batch_size: 512
+  lr: 0.00001
+  weight:
+    avel: 0.8
+    height: 1.2
+    kl: 0.1
+    l1: 0.05
+    l2: 0.005
+    pos: 0.2
+    rot: 0.1
+    up_dir: 3
+    vel: 0.8
+
+world_model:
+  rollout_length: 8
+  batch_size: 512
+  hidden_layer_size: 512
+  hidden_layer_num: 4
+  activation: ELU
+  lr: 0.001
+  weight:
+    pos: 1
+    rot: 1
+    vel: 4
+    avel: 4
+
+diffusion:
+  lr: 0.00001
+  seq_length: 24

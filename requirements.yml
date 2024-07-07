@@ -1,0 +1,25 @@
+name: moconvq
+channels:
+  - defaults
+  - pytorch
+dependencies:
+  - python=3.8
+  - tensorboardx
+  - opt_einsum
+  - numba
+  - numpy
+  - psutil
+  - pyyaml
+  - mpi4py
+  - cmake
+  - cython=0.29.36
+  - tensorboard
+  - pip
+  - pip:
+    - einops==0.6.0
+    - h5py==3.8.0
+    - matplotlib==3.7.1
+    - scikit-learn==1.2.2
+    - scipy==1.10.1
+    - tqdm==4.65.0
+    - setuptools==58.2.0

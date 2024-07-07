@@ -1,0 +1,12 @@
+virenv
+.vs
+.vscode
+build*
+test-build
+*.pyd
+*.so
+*.egg-info
+CMakeLists.txt.user
+CMakeSettings.json
+*.exe
+*.obj

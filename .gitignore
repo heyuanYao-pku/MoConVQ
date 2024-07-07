@@ -1,0 +1,14 @@
+.vscode
+__pycache__
+*.egg-info
+
+out/
+build
+
+*.h5
+*.pth
+*.data
+
+*.pyd
+*.a
+*.so
