@@ -2,6 +2,10 @@
 __pycache__
 *.egg-info
 
+.venv/
+.pyenv/
+.conda/
+
 out/
 build
 

@@ -9,30 +9,7 @@ import psutil
 import MoConVQCore.Utils.pytorch_utils as ptu
 from MoConVQCore.Utils.motion_dataset import MotionDataSet
 
-from mpi4py import MPI
-mpi_comm = MPI.COMM_WORLD
-mpi_rank = mpi_comm.Get_rank()
-
 import os
-
-import cProfile
-def profile(filename=None, comm=MPI.COMM_WORLD):
-  def prof_decorator(f):
-    def wrap_f(*args, **kwargs):
-      pr = cProfile.Profile()
-      pr.enable()
-      result = f(*args, **kwargs)
-      pr.disable()
-
-      if filename is None:
-        pr.print_stats()
-      else:
-        filename_r = filename + ".{}".format(comm.rank)
-        pr.dump_stats(filename_r)
-
-      return result
-    return wrap_f
-  return prof_decorator
 
 def flatten_dict(dd, separator='_', prefix=''):
     return { prefix + separator + k if prefix else k : v
@@ -40,17 +17,17 @@ def flatten_dict(dd, separator='_', prefix=''):
              for k, v in flatten_dict(vv, separator, kk).items()
              } if isinstance(dd, dict) else { prefix : dd }
 
-def build_args(parser):
+def build_args(parser:argparse.ArgumentParser, in_args=None):
     # add args for each content 
     parser = VCLODETrackEnv.add_specific_args(parser)
     parser = MoConVQ.add_specific_args(parser)
-    args = vars(parser.parse_args())
+    args = vars(parser.parse_args(args=in_args))
     # yaml
     config = load_yaml(args['config_file'])
     config = flatten_dict(config)
     args.update(config)
     
-    if args['load'] and mpi_rank ==0:
+    if args['load']:
         import tkinter.filedialog as fd
         config_file = fd.askopenfilename(filetypes=[('YAML','*.yml')])
         data_file = fd.askopenfilename(filetypes=[('DATA','*.data')])
@@ -61,7 +38,7 @@ def build_args(parser):
         args['data_file'] = data_file
         
     #! important!
-    seed = args['seed'] + mpi_rank
+    seed = args['seed']
     args['seed'] = seed
     VCLODETrackEnv.seed(seed)
     MoConVQ.set_seed(seed)
@@ -85,27 +62,35 @@ if __name__ == "__main__":
     parser.add_argument('--using_vanilla', default=False, action='store_true')
     parser.add_argument('--no_train', default=False, action='store_true')
     parser.add_argument('--train_prior', default=False, action='store_true')
+        
+    model_args = build_args(parser, in_args=[])    
     
+    parser = argparse.ArgumentParser()
     parser.add_argument('bvh-file', type=str, nargs='+')
+    parser.add_argument('-o', '--output-file', type=str, default='')
     parser.add_argument('--is-bvh-folder', default=False, action='store_true')
     parser.add_argument('--flip-bvh', default=False, action='store_true')
-    parser.add_argument('-o', '--output-file', type=str, default='')
+    parser.add_argument('--gpu', type = int, default=0, help='gpu id')
+    parser.add_argument('--cpu_b', type = int, default=0, help='cpu begin idx')
+    parser.add_argument('--cpu_e', type = int, default=-1, help='cpu end idx')
     
-    args = build_args(parser)
-    print(args['gpu'])
+    args = vars(parser.parse_args())
+    model_args.update(args)
+    
+    
     ptu.init_gpu(True, gpu_id=args['gpu'])
     if args['cpu_e'] !=-1:
         p = psutil.Process()
         cpu_lst = p.cpu_affinity()
         try:
-            p.cpu_affinity(range(args['cpu_b'],args['cpu_b'+mpi_rank]))   
+            p.cpu_affinity(range(args['cpu_b'], args['cpu_e']))   
         except:
             pass 
     
     
     #build each content
-    env = VCLODETrackEnv(**args)
-    agent = MoConVQ(323, 12, 57, 120,env, training=False, **args)
+    env = VCLODETrackEnv(**model_args)
+    agent = MoConVQ(323, 12, 57, 120,env, training=False, **model_args)
     
     motion_data = MotionDataSet(20)
     
@@ -163,6 +148,10 @@ if __name__ == "__main__":
             info_ = e.value
         new_observation, rwd, done, info = info_
         observation = new_observation
-    import time
-    motion_name = os.path.join('out', f'track_{time.time()}.bvh')
+        
+    if args['output_file'] == '':
+        import time
+        motion_name = os.path.join('out', f'track_{time.time()}.bvh')
+    else:
+        motion_name = args['output_file']
     saver.to_file(motion_name)

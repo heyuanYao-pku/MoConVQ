@@ -9,30 +9,7 @@ import psutil
 import MoConVQCore.Utils.pytorch_utils as ptu
 from MoConVQCore.Utils.motion_dataset import MotionDataSet
 
-from mpi4py import MPI
-mpi_comm = MPI.COMM_WORLD
-mpi_rank = mpi_comm.Get_rank()
-
 import os
-
-import cProfile
-def profile(filename=None, comm=MPI.COMM_WORLD):
-  def prof_decorator(f):
-    def wrap_f(*args, **kwargs):
-      pr = cProfile.Profile()
-      pr.enable()
-      result = f(*args, **kwargs)
-      pr.disable()
-
-      if filename is None:
-        pr.print_stats()
-      else:
-        filename_r = filename + ".{}".format(comm.rank)
-        pr.dump_stats(filename_r)
-
-      return result
-    return wrap_f
-  return prof_decorator
 
 def flatten_dict(dd, separator='_', prefix=''):
     return { prefix + separator + k if prefix else k : v
@@ -53,13 +30,6 @@ def build_args(parser=None, args_in=None):
     parser.add_argument('--cpu_e', type = int, default=-1, help='cpu end idx')
     parser.add_argument('--train_prior', default=False, action='store_true')
     
-    parser.add_argument('bvh-file', type=str, nargs='+')
-    parser.add_argument('--is-bvh-folder', default=False, action='store_true')
-    parser.add_argument('--flip-bvh', default=False, action='store_true')
-    parser.add_argument('-o', '--output-file', type=str, default='')
-    parser.add_argument('-l', '--output-level', type=int, default=8, choices=range(1, 9))
-    parser.add_argument('--use-dataset-observations-instead-input-file', default=False, action='store_true')
-    
     
     # add args for each content 
     parser = VCLODETrackEnv.add_specific_args(parser)
@@ -71,7 +41,7 @@ def build_args(parser=None, args_in=None):
     config = flatten_dict(config)
     args.update(config)
     
-    if args['load'] and mpi_rank ==0:
+    if args['load']:
         import tkinter.filedialog as fd
         config_file = fd.askopenfilename(filetypes=[('YAML','*.yml')])
         data_file = fd.askopenfilename(filetypes=[('DATA','*.data')])
@@ -82,29 +52,18 @@ def build_args(parser=None, args_in=None):
         args['data_file'] = data_file
         
     #! important!
-    seed = args['seed'] + mpi_rank
+    seed = args['seed']
     args['seed'] = seed
     VCLODETrackEnv.seed(seed)
     MoConVQ.set_seed(seed)
     return args
   
-def get_model(args):
-    print(args['gpu'])
-    ptu.init_gpu(True, gpu_id=args['gpu'])
-    if args['cpu_e'] !=-1:
-        p = psutil.Process()
-        cpu_lst = p.cpu_affinity()
-        try:
-            p.cpu_affinity(range(args['cpu_b'],args['cpu_b'+mpi_rank]))   
-        except:
-            pass 
-    
-    
+def get_model(args):    
     #build each content
     env = VCLODETrackEnv(**args)
     agent = MoConVQ(323, 12, 57, 120, env, training=False, **args)
     
-    agent.try_load(r'36000_vq.data', strict=True)
+    agent.simple_load(r'moconvq_base.data', strict=True)
     agent.eval()
     agent.posterior.limit = False
     
@@ -126,11 +85,26 @@ def encode(agent:MoConVQ, observation:np.ndarray):
           
 
 if __name__ == "__main__":    
-    args = build_args()
+    model_args = build_args(args_in=[])
+        
+    parser = argparse.ArgumentParser()
+    parser.add_argument('bvh-file', type=str, nargs='+')
+    parser.add_argument('--is-bvh-folder', default=False, action='store_true')
+    parser.add_argument('--flip-bvh', default=False, action='store_true')
+    parser.add_argument('-o', '--output-file', type=str, default='', help='output file (*.txt, *.npz, *.npy, *.h5)')
+    parser.add_argument('-l', '--output-level', type=int, default=8, choices=range(1, 9), help='number of RVQ layers')
+    parser.add_argument('--use-dataset-observations-instead-input-file', default=False, action='store_true')
+    parser.add_argument('--gpu', type = int, default=0, help='gpu id')
+    parser.add_argument('--cpu_b', type = int, default=0, help='cpu begin idx')
+    parser.add_argument('--cpu_e', type = int, default=-1, help='cpu end idx')
     
     # print(args)
+    args = vars(parser.parse_args())
+    model_args.update(args)
     
-    agent, env = get_model(args)
+    ptu.init_gpu(True, gpu_id=args['gpu'])
+    
+    agent, env = get_model(model_args)
     
     if not args['use_dataset_observations_instead_input_file']:    
         motion_data = MotionDataSet(20)
@@ -165,7 +139,7 @@ if __name__ == "__main__":
             np.save(out_fn, seq_indices)
             
         else:
-            np.savetxt(out_fn, seq_indices[:args['output_level']])
+            np.savetxt(out_fn, seq_indices[:args['output_level']], fmt='%3d')
             # with open(out_fn, 'w') as f:
             #     for l in range(args['output_level']):
             #         f.write(' '.join(f'{d}' for d in seq_indices[l]))

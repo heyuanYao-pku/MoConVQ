@@ -38,14 +38,11 @@ def build_args(parser=None, args_in=None):
     parser.add_argument('--using_vanilla', default=False, action='store_true')
     parser.add_argument('--no_train', default=False, action='store_true')
     parser.add_argument('--train_prior', default=False, action='store_true')
-    parser.add_argument('indices', type=int, nargs='*', help="")
-    parser.add_argument('-f', '--index-file', type = str, default="", help="")
-    parser.add_argument('-l', '--index-level', type=int, default=1, choices=range(1, 9))
     
     # add args for each content 
     parser = VCLODETrackEnv.add_specific_args(parser)
     parser = MoConVQ.add_specific_args(parser)
-    args = vars(parser.parse_args())
+    args = vars(parser.parse_args(args_in))
     # yaml
     config = load_yaml(args['config_file'])
     config = flatten_dict(config)
@@ -69,8 +66,7 @@ def build_args(parser=None, args_in=None):
     
     return args
 
-def get_model(args):    
-    print(args['gpu'])
+def get_model(args):
     ptu.init_gpu(True, gpu_id=args['gpu'])
     if args['cpu_e'] !=-1:
         p = psutil.Process()
@@ -79,14 +75,12 @@ def get_model(args):
             p.cpu_affinity(range(args['cpu_b'], args['cpu_b']))   
         except:
             pass 
-    
-    
+        
     #build each content
     env = VCLODETrackEnv(**args)
     agent = MoConVQ(323, 12, 57, 120, env, training=False, **args)
     
-    # agent.try_load(r'24000_vq.data', strict=True)
-    agent.try_load(r'36000_vq.data', strict=True)
+    agent.simple_load(r'moconvq_base.data', strict=True)
     # env.stable_pd.tor_lim = env.stable_pd.tor_lim.clip(max=200)
     agent.eval()
     agent.posterior.limit = False
@@ -95,23 +89,29 @@ def get_model(args):
     
     return agent, env
     
-def parse_indices(args):    
-    indices = args['indices']
+def parse_indices(args):
     
-    if len(indices) == 0:
-        indices = '184 463 501 188 471 220 184 463 501 188 471 220 184 463 501 188 471 220 184 463 501 188 471 220 184 463 501 188 471 220 110 273  67 178 299  56 419 504 386 110 437 335 248  28  28 437 368  94 227 337'
-        # indices = '419 504 419 504 419 504 419 504 419 504 419 504'
-        # index = sum(index, [])
-        # index = index*2        
-        indices = [int(x) for x in indices.split()]
-        # index = np.random.randint(0, 512, size=(200,))
-        # indices = np.arange(512).reshape(512,-1).repeat(10,1).flatten()
-        
-    if len(args['index_file']) > 0:
-        with open(args['index_file'], 'r') as f:
-            indices = [int(x) for x in f.read().split()]
-        
+    if 'indices' in args and args['indices'] is not None:
+        indices = args['indices']
     
+    elif len(args['index_file']) > 0:
+        if args['index_file'].endswith('.txt'):
+            indices = np.loadtxt(args['index_file'])
+        elif args['index_file'].endswith('.npz'):
+            with np.load(args['index_file']) as f:
+                indices = f['tokens']
+        elif args['index_file'].endswith('.npy'):
+            indices = np.load(args['index_file'])
+        elif args['index_file'].endswith('.h5'):
+            import h5py
+            with h5py.File(args['index_file'], 'r') as f:
+                indices = np.asarray(f['tokens'])
+        else:
+            with open(args['index_file'], 'r') as f:
+                indices = [int(x) for x in f.read().split()]
+    else:
+        indices = [0, 0, 0, 0]
+            
     indices = np.asarray(indices)
     if args['index_level'] > 0:
         indices = indices.reshape(args['index_level'], -1)
@@ -180,12 +180,29 @@ def decode(agent:MoConVQ, indices):
     return saver
     
 if __name__ == "__main__":    
-    args = build_args()
+    model_args = build_args(args_in=[])
+    
+    parser = argparse.ArgumentParser()
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('-i', '--indices', type=int, nargs='*', help="token indices")
+    group.add_argument('-f', '--index-file', type = str, default="", help="token file")
+    parser.add_argument('-l', '--index-level', type=int, default=-1, choices=range(1, 9), help='number of RVQ layers. -1 will use the number of rows of the input data as the index level')
+    parser.add_argument('-o', '--output-file', type=str, default='')
+    parser.add_argument('--gpu', type = int, default=0, help='gpu id')
+    parser.add_argument('--cpu_b', type = int, default=0, help='cpu begin idx')
+    parser.add_argument('--cpu_e', type = int, default=-1, help='cpu end idx')
+    args = vars(parser.parse_args())
+    model_args.update(args)
+        
     indices = parse_indices(args)
-    agent, _ = get_model(args)
+    agent, _ = get_model(model_args)
     saver = decode(agent, indices)   
     
-    import time
-    motion_name = os.path.join('out', f'track_{time.time()}.bvh')
+    if args['output_file'] == '':
+        import time
+        motion_name = os.path.join('out', f'track_{time.time()}.bvh')
+    else:
+        motion_name = args['output_file']
+        
     saver.to_file(motion_name)
     
