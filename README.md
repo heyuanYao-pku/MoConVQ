@@ -19,8 +19,13 @@ Pretrained data: Download from
 ```
 https://disk.pku.edu.cn/link/AAAFE3B2DDB1AC420EB5C4E0910196116F
 ```
+or from OneDrive
+```
+https://1drv.ms/f/s!AsrkHbtkj4LsbqMZI08Bt9jFPJ4?e=SXkFlg
+```
 
 and place all file in this folder
+
 
 # Motion Reconstruction
 
@@ -33,11 +38,47 @@ Or you can run the following command to reconstruct a kinematic motion into phys
 python .\Script\track_something.py base.bvh
 ```
 
+# Motion Tokenization and Decoding
+## Tokenization
+You may use `.\Script\tokenize_motion.py` to convert a motion in bvh format into tokens, e.g.
+```
+python .\Script\tokenize_motion.py track.bvh -o out\tokens.txt
+```
+
+Run
+```
+python .\Script\tokenize_motion.py track.bvh -h
+```
+for more information
+
+## Decoding
+You may use `.\Script\decode_token.py` to decode a sequence of tokens into simulated motion, e.g.
+```
+python .\Script\decode_token.py -i 166 410 332 149 419 237 172 305 192 273 174 -o out\decode.bvh
+```
+or 
+```
+python .\Script\decode_token.py -f tokens.txt -o out\decode.bvh
+```
+
+Run
+```
+python .\Script\decode_token.py track.bvh -h
+```
+for more information
+
+
+
 # Unconditional motion generation
 
 ```
 python .\Script\unconditional_generation.py
 ```
+You may use `--seed` argument to choose another random seed. It will generate a different motion.
+```
+python .\Script\unconditional_generation.py --seed 123
+```
+
 
 
 # text-to-motion generation
